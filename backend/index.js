@@ -12,7 +12,7 @@ const PORT = process.env.PORT || 5000;
 
 // Middleware
 app.use(cors({
-  origin: ['http://localhost:5173', 'http://localhost:3000', 'http://127.0.0.1:5173', 'http://127.0.0.1:3000'],
+  origin: ['http://localhost:5173', 'http://localhost:3000', 'http://127.0.0.1:5173', 'http://127.0.0.1:3000', '*'],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
@@ -75,12 +75,21 @@ let isMongoConnected = false;
 
 // Initialize admin credentials and store in MongoDB
 const initializeAdmin = async () => {
-  const hashedPassword = await bcrypt.hash(process.env.ADMIN_PASSWORD, 12);
+  const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
+  const adminEmail = process.env.ADMIN_EMAIL || 'admin@solfix.com';
+  const adminPhone = process.env.ADMIN_PHONE || '+1234567890';
+  const adminUsername = process.env.ADMIN_USERNAME || 'admin';
+
+  if (!process.env.ADMIN_PASSWORD) {
+    console.warn('⚠️  ADMIN_PASSWORD not set. Using default password "admin123". Please set ADMIN_PASSWORD in environment variables for production.');
+  }
+
+  const hashedPassword = await bcrypt.hash(adminPassword, 12);
   adminCredentials = {
     id: 'admin-001',
-    email: process.env.ADMIN_EMAIL,
-    phone: process.env.ADMIN_PHONE,
-    username: process.env.ADMIN_USERNAME,
+    email: adminEmail,
+    phone: adminPhone,
+    username: adminUsername,
     password: hashedPassword,
     createdAt: new Date().toISOString()
   };
