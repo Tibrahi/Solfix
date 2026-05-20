@@ -129,6 +129,8 @@ If using custom domains:
 - [ ] `VITE_API_URL` set to production backend API URL
 - [ ] MongoDB Atlas connection string configured
 - [ ] Admin password changed from default
+- [ ] SPA routing configured (`public/_redirects` file exists)
+- [ ] `vercel.json` exists in frontend directory
 
 ### Post-Deployment Testing
 - [ ] Backend health check: `GET https://your-backend-domain.com/api/health`
