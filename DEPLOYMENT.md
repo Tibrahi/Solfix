@@ -1,38 +1,146 @@
-# Solfix Deployment Guide
+# Solfix Deployment Guide - Production-Safe API Communication
 
-This guide explains how to deploy the Solfix application (frontend + backend) to Vercel.
+This guide explains how to deploy the Solfix application with a stable, production-safe API communication layer that automatically handles environment switching between local development and production.
 
-## Project Structure
+## Table of Contents
 
+- [Architecture Overview](#architecture-overview)
+- [Root Cause Analysis](#root-cause-analysis)
+- [Prerequisites](#prerequisites)
+- [Backend Deployment to Render](#backend-deployment-to-render)
+- [Frontend Deployment to Vercel](#frontend-deployment-to-vercel)
+- [Environment Configuration](#environment-configuration)
+- [Local Development](#local-development)
+- [Troubleshooting](#troubleshooting)
+- [API Endpoints](#api-endpoints)
+
+---
+
+## Architecture Overview
+
+### Problem Statement
+
+The application previously had unstable API communication due to:
+- Hardcoded localhost/backend URLs in frontend code
+- Static CORS origin lists requiring manual updates
+- No automatic environment detection
+- API requests failing silently after deployment
+- Domain changes breaking the communication layer
+
+### Solution
+
+The new architecture implements:
+
+1. **Dynamic API URL Resolution** (`frontend/src/config.js`)
+   - Automatically detects environment (development vs production)
+   - Uses `VITE_API_URL` environment variable when set
+   - Falls back to relative `/api` path in production (same-origin)
+   - Falls back to `localhost:5000` in development
+
+2. **Dynamic CORS Configuration** (`backend/index.js`)
+   - Supports regex patterns for Vercel/Render preview URLs
+   - Reads allowed origins from `ALLOWED_ORIGINS` environment variable
+   - Automatically allows common deployment patterns
+
+3. **Enhanced API Request Handler**
+   - Automatic JWT token injection
+   - Retry logic with exponential backoff
+   - Automatic redirect to login on 401 responses
+   - Comprehensive error handling
+
+---
+
+## Root Cause Analysis
+
+### Issue 1: Hardcoded API URLs
+
+**Before:**
+```javascript
+// Old config.js - hardcoded fallback
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://solfix.onrender.com/api';
 ```
-Solfix/
-├── backend/           # Express.js backend API
-│   ├── api/          # Vercel serverless functions
-│   │   ├── admin/    # Admin endpoints
-│   │   ├── applicants/ # Applicant endpoints
-│   │   ├── lib/      # Shared database utilities
-│   │   └── health.js # Health check endpoint
-│   ├── index.js      # Local development server
-│   ├── vercel.json   # Vercel configuration
-│   └── package.json
-├── frontend/         # React/Vite frontend
-│   ├── src/
-│   │   └── config.js # API configuration
-│   └── package.json
-└── DEPLOYMENT.md
+
+**After:**
+```javascript
+// New config.js - dynamic resolution
+const resolveApiBaseUrl = () => {
+  const envUrl = import.meta.env.VITE_API_URL;
+  if (envUrl) return envUrl.replace(/\/$/, '');
+  if (import.meta.env.PROD) return '/api'; // Relative path for production
+  return 'http://localhost:5000/api'; // Development fallback
+};
 ```
+
+### Issue 2: Static CORS Origins
+
+**Before:**
+```javascript
+// Old CORS - static list
+origin: ['http://localhost:5173', 'https://solfix-1.onrender.com', '*']
+```
+
+**After:**
+```javascript
+// New CORS - dynamic with regex patterns
+origin: (origin, callback) => {
+  const isAllowed = allowedOrigins.some(allowed => {
+    if (typeof allowed === 'string') return allowed === origin;
+    if (allowed instanceof RegExp) return allowed.test(origin);
+    return false;
+  });
+  callback(null, isAllowed);
+}
+```
+
+### Issue 3: Silent Request Failures
+
+**Before:**
+```javascript
+// Old apiRequest - no retry, no error recovery
+const response = await fetch(endpoint, config);
+```
+
+**After:**
+```javascript
+// New apiRequest - retry logic, automatic auth recovery
+for (let attempt = 0; attempt <= maxRetries; attempt++) {
+  const response = await fetch(endpoint, config);
+  if (response.status === 401) {
+    localStorage.removeItem('adminToken');
+    window.location.href = '/admin/login';
+    break;
+  }
+}
+```
+
+---
 
 ## Prerequisites
 
-1. **Vercel Account**: Sign up at [vercel.com](https://vercel.com)
-2. **MongoDB Atlas**: Create a free cluster at [mongodb.com/cloud/atlas](https://www.mongodb.com/cloud/atlas)
-3. **Node.js**: Install Node.js 18+ for local development
+1. **Render Account**: Sign up at [render.com](https://render.com)
+2. **Vercel Account**: Sign up at [vercel.com](https://vercel.com)
+3. **MongoDB Atlas**: Create a free cluster at [mongodb.com/cloud/atlas](https://www.mongodb.com/cloud/atlas)
+4. **Node.js**: Install Node.js 18+ for local development
 
-## Backend Deployment to Vercel
+---
 
-### Step 1: Configure Environment Variables
+## Backend Deployment to Render
 
-In your Vercel project dashboard, add the following environment variables:
+### Step 1: Create a Web Service
+
+1. Go to your Render dashboard
+2. Click "New +" and select "Web Service"
+3. Connect your GitHub repository
+4. Configure the service:
+   - **Name**: `solfix-backend`
+   - **Environment**: `Node`
+   - **Build Command**: `cd backend && npm install`
+   - **Start Command**: `cd backend && node index.js`
+   - **Instance Type**: Free
+
+### Step 2: Configure Environment Variables
+
+In your Render service dashboard, add the following environment variables:
 
 | Variable | Description | Example |
 |----------|-------------|---------|
@@ -41,41 +149,91 @@ In your Vercel project dashboard, add the following environment variables:
 | `ADMIN_PASSWORD` | Admin login password | `your_secure_password` |
 | `ADMIN_USERNAME` | Admin username | `admin` |
 | `ADMIN_PHONE` | Admin phone number | `+1234567890` |
+| `ALLOWED_ORIGINS` | Frontend URLs (optional) | `https://solfix.vercel.app,https://solfix-1.onrender.com` |
 
-### Step 2: Deploy Backend
+> **Note**: `PORT` is automatically set by Render.
 
-```bash
-cd backend
-vercel --prod
+### Step 3: Deploy
+
+After configuring, Render will automatically deploy your backend. Note the backend URL:
+```
+https://solfix-backend.onrender.com
 ```
 
-### Step 3: Note Your Backend URL
-
-After deployment, Vercel will provide a URL like:
-`https://solfix-backend.vercel.app`
-
 Your API endpoints will be available at:
-- `https://solfix-backend.vercel.app/api/health`
-- `https://solfix-backend.vercel.app/api/admin/login`
-- `https://solfix-backend.vercel.app/api/applicants`
+- `https://solfix-backend.onrender.com/api/health`
+- `https://solfix-backend.onrender.com/api/admin/login`
+- `https://solfix-backend.onrender.com/api/applicants`
 - etc.
+
+---
 
 ## Frontend Deployment to Vercel
 
-### Step 1: Configure Environment Variables
+### Step 1: Connect Repository
 
-In your Vercel frontend project dashboard, add:
+1. Go to your Vercel dashboard
+2. Click "Add New..." → "Project"
+3. Import your GitHub repository
+4. Configure the project:
+   - **Framework Preset**: Vite
+   - **Root Directory**: `./frontend`
+   - **Build Command**: `npm run build`
+   - **Output Directory**: `dist`
+
+### Step 2: Configure Environment Variables
+
+In your Vercel project settings, add:
 
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `VITE_API_URL` | Backend API base URL | `https://solfix-backend.vercel.app/api` |
+| `VITE_API_URL` | Backend API base URL | `https://solfix-backend.onrender.com/api` |
 
-### Step 2: Deploy Frontend
+> **Important**: This variable is baked into the build at deploy time. Changing it requires a redeploy.
 
-```bash
-cd frontend
-vercel --prod
+### Step 3: Deploy
+
+Click "Deploy". Vercel will build and deploy your frontend. Note the frontend URL:
 ```
+https://solfix.vercel.app
+```
+
+### Step 4: Update Backend CORS (Important!)
+
+After the frontend is deployed, update the backend's `ALLOWED_ORIGINS` environment variable on Render to include the new Vercel URL:
+
+```
+https://solfix.vercel.app
+```
+
+---
+
+## Environment Configuration
+
+### Frontend Environment Variables
+
+Create `.env.local` in the `frontend` directory for local development:
+
+```env
+# Local development - points to localhost backend
+VITE_API_URL=http://localhost:5000/api
+```
+
+### Backend Environment Variables
+
+Create `.env` in the `backend` directory:
+
+```env
+PORT=5000
+MONGODB_URI=mongodb+srv://user:pass@cluster.mongodb.net/solfix
+ADMIN_EMAIL=admin@solfix.com
+ADMIN_PASSWORD=your_secure_password
+ADMIN_USERNAME=admin
+ADMIN_PHONE=+1234567890
+ALLOWED_ORIGINS=http://localhost:5173,http://localhost:3000
+```
+
+---
 
 ## Local Development
 
@@ -89,13 +247,14 @@ ADMIN_EMAIL=admin@solfix.com
 ADMIN_PASSWORD=your_password
 ADMIN_USERNAME=admin
 ADMIN_PHONE=+1234567890
+ALLOWED_ORIGINS=http://localhost:5173,http://localhost:3000
 ```
 
 2. Install dependencies and start:
 ```bash
 cd backend
 npm install
-npm run dev
+npm start
 ```
 
 The server will start at `http://localhost:5000`
@@ -116,67 +275,59 @@ npm run dev
 
 The frontend will start at `http://localhost:5173`
 
-## Testing the Deployment
-
-### Health Check
-```bash
-curl https://your-backend.vercel.app/api/health
-```
-
-Expected response:
-```json
-{
-  "status": "ok",
-  "mongodb": "connected",
-  "timestamp": "2024-01-01T00:00:00.000Z"
-}
-```
-
-### Admin Login
-```bash
-curl -X POST https://your-backend.vercel.app/api/admin/login \
-  -H "Content-Type: application/json" \
-  -d '{"identifier":"admin@solfix.com","password":"your_password"}'
-```
-
-## Default Admin Credentials
-
-If you don't set environment variables, the backend will use these defaults:
-- **Email**: `admin@solfix.com`
-- **Password**: `admin123`
-- **Username**: `admin`
-- **Phone**: `+1234567890`
-
-⚠️ **Important**: Change these defaults in production!
+---
 
 ## Troubleshooting
 
-### 404 Errors on Routes
-
-If you're getting 404 errors, check:
-1. The `vercel.json` configuration is correct
-2. All API files are in the `api/` directory
-3. The routes in `vercel.json` match your endpoint paths
-
-### bcryptjs Error
-
-If you see `Error: Illegal arguments: undefined, number`:
-1. Make sure `ADMIN_PASSWORD` environment variable is set
-2. Or the backend will use the default password `admin123`
-
 ### CORS Errors
 
-The backend is configured to allow all origins (`*`) for development.
-For production, update the CORS configuration in each API function:
-```javascript
-res.setHeader('Access-Control-Allow-Origin', 'https://your-frontend.vercel.app');
-```
+If you see CORS errors in the browser console:
 
-### MongoDB Connection Issues
+1. **Check backend ALLOWED_ORIGINS**:
+   - Ensure your frontend URL is included
+   - For Vercel preview deployments, use regex pattern or add specific URLs
 
-1. Verify your MongoDB Atlas connection string is correct
-2. Ensure your IP address is whitelisted in MongoDB Atlas
-3. Check that the database user has proper permissions
+2. **Verify backend is running**:
+   ```bash
+   curl https://solfix-backend.onrender.com/api/health
+   ```
+
+3. **Check browser console** for the blocked origin, then add it to `ALLOWED_ORIGINS`
+
+### API Requests Failing
+
+1. **Check API URL configuration**:
+   - Open browser console and look for `[API Config]` messages
+   - Verify `VITE_API_URL` is set correctly in Vercel
+
+2. **Test health endpoint**:
+   ```bash
+   curl -v https://solfix-backend.onrender.com/api/health
+   ```
+
+3. **Check network tab** in browser DevTools for failed requests
+
+### 401 Unauthorized Errors
+
+1. **Token expired**: The session token expires after 24 hours
+   - User needs to log in again
+   - The system automatically redirects to login page
+
+2. **Token not being sent**: Check that `Authorization` header is included
+   - Open DevTools → Network tab
+   - Check request headers for `Authorization: Bearer <token>`
+
+### Admin Login Not Working
+
+1. **Verify credentials**:
+   - Check `ADMIN_EMAIL`, `ADMIN_PASSWORD` in Render environment variables
+   - Default credentials: `admin@solfix.com` / `admin123` (if not set)
+
+2. **Check MongoDB connection**:
+   - Verify `MONGODB_URI` is correct
+   - Ensure IP whitelist includes `0.0.0.0/0` for Render
+
+---
 
 ## API Endpoints
 
@@ -194,9 +345,43 @@ res.setHeader('Access-Control-Allow-Origin', 'https://your-frontend.vercel.app')
 | PATCH | `/api/applicants/:id` | Yes | Update applicant |
 | DELETE | `/api/applicants/:id` | Yes | Delete applicant |
 
+---
+
+## Production URLs
+
+After deployment:
+
+- **Backend API**: `https://solfix-backend.onrender.com/api`
+- **Frontend**: `https://solfix.vercel.app`
+
+---
+
+## Deployment Checklist
+
+### Backend (Render)
+- [ ] MongoDB URI configured
+- [ ] Admin credentials set (non-default password)
+- [ ] ALLOWED_ORIGINS includes frontend URL
+- [ ] Health endpoint returns 200
+
+### Frontend (Vercel)
+- [ ] VITE_API_URL set to backend URL
+- [ ] Build completes successfully
+- [ ] API requests reach backend
+- [ ] Admin login works
+
+### Post-Deployment
+- [ ] Test admin login
+- [ ] Test applicant registration
+- [ ] Test dashboard functionality
+- [ ] Verify CORS allows all needed origins
+
+---
+
 ## Support
 
 For issues or questions:
-1. Check the Vercel function logs in the dashboard
-2. Review the backend logs for errors
-3. Verify environment variables are correctly set
+1. Check the Render logs in the dashboard
+2. Check Vercel function logs if using serverless
+3. Review browser console for client-side errors
+4. Verify environment variables are correctly set

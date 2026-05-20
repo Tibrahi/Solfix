@@ -11,8 +11,8 @@ export default function Hero() {
               <span className="text-white text-sm font-medium">Limited Seats Available</span>
             </div>
             <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-white leading-tight mb-6">
-              Professional Laptop &{' '}
-              <span className="text-gray-400">Motherboard</span> Repair Training
+              Electronic {' '}
+              <span className="text-gray-400">Devices</span> Repair Training
             </h1>
             <p className="text-lg text-gray-400 mb-8 max-w-xl mx-auto lg:mx-0">
               Master board-level repair skills with hands-on training from industry experts. 

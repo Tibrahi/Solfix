@@ -10,32 +10,104 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Middleware
-app.use(cors({
-  origin: [
-    'http://localhost:5173', 
-    'http://localhost:3000', 
-    'http://127.0.0.1:5173', 
+// ============================================================================
+// CORS Configuration - Production-Safe Dynamic Origin Handling
+// ============================================================================
+
+/**
+ * Dynamic CORS origin validation
+ * 
+ * This function validates incoming origins against a list of allowed patterns.
+ * It supports:
+ * - Exact matches (e.g., 'http://localhost:5173')
+ * - Wildcard subdomains (e.g., '*.vercel.app')
+ * - Environment variable configured origins
+ * - Render preview URLs (e.g., 'solfix-frontend-abc123.onrender.com')
+ */
+const allowedOrigins = (() => {
+  const origins = [
+    // Local development
+    'http://localhost:5173',
+    'http://localhost:3000',
+    'http://127.0.0.1:5173',
     'http://127.0.0.1:3000',
-    'https://solfix-1.onrender.com',
-    'https://solfix.onrender.com',
-    '*'
-  ],
+  ];
+
+  // Add origins from environment variable (comma-separated)
+  if (process.env.ALLOWED_ORIGINS) {
+    const envOrigins = process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim());
+    origins.push(...envOrigins);
+  }
+
+  // Add Render URLs if BACKEND_URL is set
+  if (process.env.BACKEND_URL) {
+    const backendUrl = process.env.BACKEND_URL.replace(/\/$/, '');
+    origins.push(backendUrl);
+  }
+
+  // Add common Vercel preview patterns
+  origins.push(/https:\/\/[\w-]+\.vercel\.app$/);
+  origins.push(/https:\/\/[\w-]+\.onrender\.com$/);
+
+  return origins;
+})();
+
+const corsOptions = {
+  origin: (origin, callback) => {
+    // Allow requests with no origin (mobile apps, curl, etc.)
+    if (!origin) {
+      return callback(null, true);
+    }
+
+    // Check against allowed origins
+    const isAllowed = allowedOrigins.some(allowed => {
+      if (typeof allowed === 'string') {
+        return allowed === origin;
+      }
+      if (allowed instanceof RegExp) {
+        return allowed.test(origin);
+      }
+      return false;
+    });
+
+    if (isAllowed) {
+      callback(null, true);
+    } else {
+      console.warn(`[CORS] Blocked origin: ${origin}`);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  optionsSuccessStatus: 200
-}));
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  exposedHeaders: ['Content-Range', 'X-Content-Range'],
+  optionsSuccessStatus: 200,
+  maxAge: 86400 // 24 hours cache for preflight
+};
 
-// Request logging middleware for debugging
+// Apply CORS middleware
+app.use(cors(corsOptions));
+
+// ============================================================================
+// Request Logging Middleware
+// ============================================================================
+
 app.use((req, res, next) => {
-  console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
+  const start = Date.now();
+  res.on('finish', () => {
+    const duration = Date.now() - start;
+    console.log(`${new Date().toISOString()} - ${req.method} ${req.path} - ${res.statusCode} (${duration}ms)`);
+  });
   next();
 });
 
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// ============================================================================
 // MongoDB Connection
+// ============================================================================
+
 let db;
 let applicantsCollection;
 let adminsCollection;
@@ -81,7 +153,10 @@ const inMemorySessions = new Map();
 let adminCredentials = null;
 let isMongoConnected = false;
 
-// Initialize admin credentials and store in MongoDB
+// ============================================================================
+// Admin Credentials Management
+// ============================================================================
+
 const initializeAdmin = async () => {
   const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
   const adminEmail = process.env.ADMIN_EMAIL || 'admin@solfix.com';
@@ -104,7 +179,6 @@ const initializeAdmin = async () => {
 
   // Store admin in MongoDB if connected
   if (isMongoConnected && adminsCollection) {
-    // Check if admin already exists
     const existingAdmin = await adminsCollection.findOne({ email: adminCredentials.email });
     if (!existingAdmin) {
       await adminsCollection.insertOne({
@@ -113,7 +187,6 @@ const initializeAdmin = async () => {
       });
       console.log('✅ Admin credentials saved to MongoDB');
     } else {
-      // Update existing admin credentials
       adminCredentials = {
         id: existingAdmin._id.toString(),
         email: existingAdmin.email,
@@ -129,7 +202,6 @@ const initializeAdmin = async () => {
   }
 };
 
-// Load admin from MongoDB on startup
 const loadAdminFromDB = async () => {
   if (isMongoConnected && adminsCollection) {
     const existingAdmin = await adminsCollection.findOne({});
@@ -147,12 +219,14 @@ const loadAdminFromDB = async () => {
   }
 };
 
-// Generate secure session token
+// ============================================================================
+// Session Management
+// ============================================================================
+
 const generateSessionToken = () => {
   return crypto.randomBytes(64).toString('hex');
 };
 
-// Create session
 const createSession = async (adminData) => {
   const token = generateSessionToken();
   const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
@@ -175,7 +249,6 @@ const createSession = async (adminData) => {
   return token;
 };
 
-// Validate session
 const validateSession = async (token) => {
   if (!token) return null;
 
@@ -188,9 +261,7 @@ const validateSession = async (token) => {
 
   if (!session) return null;
 
-  // Check if session is expired
   if (new Date() > new Date(session.expiresAt)) {
-    // Remove expired session
     if (isMongoConnected && sessionsCollection) {
       await sessionsCollection.deleteOne({ token });
     } else {
@@ -202,7 +273,6 @@ const validateSession = async (token) => {
   return session;
 };
 
-// Delete session (logout)
 const deleteSession = async (token) => {
   if (isMongoConnected && sessionsCollection) {
     await sessionsCollection.deleteOne({ token });
@@ -211,7 +281,10 @@ const deleteSession = async (token) => {
   }
 };
 
-// Auth middleware (session-based)
+// ============================================================================
+// Authentication Middleware
+// ============================================================================
+
 const authenticateSession = async (req, res, next) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
@@ -236,7 +309,19 @@ const authenticateSession = async (req, res, next) => {
   }
 };
 
+// ============================================================================
 // Routes
+// ============================================================================
+
+// Health check endpoint (public)
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    mongodb: isMongoConnected ? 'connected' : 'disconnected',
+    timestamp: new Date().toISOString(),
+    version: '1.0.0'
+  });
+});
 
 // Admin Login
 app.post('/api/admin/login', async (req, res) => {
@@ -247,10 +332,8 @@ app.post('/api/admin/login', async (req, res) => {
       return res.status(400).json({ error: 'Email/phone/username and password are required' });
     }
 
-    // Load latest admin credentials from DB
     await loadAdminFromDB();
 
-    // Check if identifier matches email, phone, or username
     if (!adminCredentials) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
@@ -270,7 +353,6 @@ app.post('/api/admin/login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    // Create session token
     const token = await createSession(adminCredentials);
 
     res.json({
@@ -312,7 +394,7 @@ app.get('/api/admin/verify', authenticateSession, (req, res) => {
   });
 });
 
-// Submit registration form (public - no auth required)
+// Submit registration form (public)
 app.post('/api/applicants', async (req, res) => {
   try {
     const applicantData = req.body;
@@ -331,14 +413,12 @@ app.post('/api/applicants', async (req, res) => {
     let savedApplicant;
 
     if (isMongoConnected && applicantsCollection) {
-      // Save to MongoDB
       const result = await applicantsCollection.insertOne(newApplicant);
       savedApplicant = {
         id: result.insertedId.toString(),
         ...newApplicant
       };
     } else {
-      // Fallback to in-memory storage
       savedApplicant = {
         id: String(inMemoryApplicants.length + 1),
         ...newApplicant
@@ -366,12 +446,10 @@ app.get('/api/applicants', authenticateSession, async (req, res) => {
 
     let query = {};
 
-    // Filter by status
     if (status && status !== 'all') {
       query.status = status;
     }
 
-    // Search by name, email, or phone
     if (search) {
       query.$or = [
         { fullName: { $regex: search, $options: 'i' } },
@@ -384,7 +462,6 @@ app.get('/api/applicants', authenticateSession, async (req, res) => {
     let total = 0;
 
     if (isMongoConnected && applicantsCollection) {
-      // Query from MongoDB
       total = await applicantsCollection.countDocuments(query);
       
       const sortDirection = order === 'desc' ? -1 : 1;
@@ -395,13 +472,11 @@ app.get('/api/applicants', authenticateSession, async (req, res) => {
         .sort({ [sortField]: sortDirection })
         .toArray();
       
-      // Convert ObjectId to string for consistency
       applicants = applicants.map(app => ({
         id: app._id.toString(),
         ...app
       }));
     } else {
-      // Fallback to in-memory storage
       let filteredApplicants = [...inMemoryApplicants];
 
       if (status && status !== 'all') {
@@ -445,7 +520,6 @@ app.get('/api/applicants/:id', authenticateSession, async (req, res) => {
     let applicant;
 
     if (isMongoConnected && applicantsCollection) {
-      // Query from MongoDB
       const result = await applicantsCollection.findOne({ 
         _id: new ObjectId(req.params.id) 
       });
@@ -457,7 +531,6 @@ app.get('/api/applicants/:id', authenticateSession, async (req, res) => {
         };
       }
     } else {
-      // Fallback to in-memory storage
       applicant = inMemoryApplicants.find(a => a.id === req.params.id);
     }
 
@@ -478,7 +551,6 @@ app.patch('/api/applicants/:id', authenticateSession, async (req, res) => {
     const { status, notes } = req.body;
 
     if (isMongoConnected && applicantsCollection) {
-      // Update in MongoDB
       const updateData = {};
       if (status) updateData.status = status;
       if (notes !== undefined) updateData.adminNotes = notes;
@@ -505,7 +577,6 @@ app.patch('/api/applicants/:id', authenticateSession, async (req, res) => {
         }
       });
     } else {
-      // Fallback to in-memory storage
       const applicant = inMemoryApplicants.find(a => a.id === req.params.id);
 
       if (!applicant) {
@@ -528,7 +599,6 @@ app.patch('/api/applicants/:id', authenticateSession, async (req, res) => {
 app.delete('/api/applicants/:id', authenticateSession, async (req, res) => {
   try {
     if (isMongoConnected && applicantsCollection) {
-      // Delete from MongoDB
       const result = await applicantsCollection.deleteOne({ 
         _id: new ObjectId(req.params.id) 
       });
@@ -539,7 +609,6 @@ app.delete('/api/applicants/:id', authenticateSession, async (req, res) => {
 
       res.json({ success: true, message: 'Applicant deleted successfully' });
     } else {
-      // Fallback to in-memory storage
       const index = inMemoryApplicants.findIndex(a => a.id === req.params.id);
 
       if (index === -1) {
@@ -566,37 +635,31 @@ app.get('/api/admin/stats', authenticateSession, async (req, res) => {
     let recentSubmissions = 0;
 
     if (isMongoConnected && applicantsCollection) {
-      // Query from MongoDB
       const allApplicants = await applicantsCollection.find({}).toArray();
       totalApplicants = allApplicants.length;
       pendingCount = allApplicants.filter(a => a.status === 'pending').length;
       approvedCount = allApplicants.filter(a => a.status === 'approved').length;
       rejectedCount = allApplicants.filter(a => a.status === 'rejected').length;
 
-      // Course distribution
       allApplicants.forEach(a => {
         const course = a.desiredCourse || 'Not specified';
         courseDistribution[course] = (courseDistribution[course] || 0) + 1;
       });
 
-      // Recent submissions (last 7 days)
       const weekAgo = new Date();
       weekAgo.setDate(weekAgo.getDate() - 7);
       recentSubmissions = allApplicants.filter(a => new Date(a.submittedAt) >= weekAgo).length;
     } else {
-      // Fallback to in-memory storage
       totalApplicants = inMemoryApplicants.length;
       pendingCount = inMemoryApplicants.filter(a => a.status === 'pending').length;
       approvedCount = inMemoryApplicants.filter(a => a.status === 'approved').length;
       rejectedCount = inMemoryApplicants.filter(a => a.status === 'rejected').length;
 
-      // Course distribution
       inMemoryApplicants.forEach(a => {
         const course = a.desiredCourse || 'Not specified';
         courseDistribution[course] = (courseDistribution[course] || 0) + 1;
       });
 
-      // Recent submissions (last 7 days)
       const weekAgo = new Date();
       weekAgo.setDate(weekAgo.getDate() - 7);
       recentSubmissions = inMemoryApplicants.filter(a => new Date(a.submittedAt) >= weekAgo).length;
@@ -624,7 +687,6 @@ app.put('/api/admin/credentials', authenticateSession, async (req, res) => {
   try {
     const { email, phone, username, currentPassword, newPassword } = req.body;
 
-    // Verify current password
     if (!adminCredentials) {
       return res.status(401).json({ error: 'Admin credentials not available' });
     }
@@ -634,18 +696,15 @@ app.put('/api/admin/credentials', authenticateSession, async (req, res) => {
       return res.status(401).json({ error: 'Current password is incorrect' });
     }
 
-    // Update credentials
     if (email) adminCredentials.email = email;
     if (phone) adminCredentials.phone = phone;
     if (username) adminCredentials.username = username;
 
     if (newPassword) {
-      // Hash new password
       const hashed = await bcrypt.hash(newPassword, 12);
       adminCredentials.password = hashed;
     }
 
-    // Persist to MongoDB
     if (isMongoConnected && adminsCollection) {
       await adminsCollection.updateOne(
         { _id: new ObjectId(adminCredentials.id) },
@@ -674,24 +733,49 @@ app.put('/api/admin/credentials', authenticateSession, async (req, res) => {
   }
 });
 
-// Health check endpoint
-app.get('/api/health', (req, res) => {
-  res.json({
-    status: 'ok',
-    mongodb: isMongoConnected ? 'connected' : 'disconnected',
-    timestamp: new Date().toISOString()
+// ============================================================================
+// Error Handling Middleware
+// ============================================================================
+
+// 404 handler
+app.use((req, res) => {
+  res.status(404).json({
+    error: 'Endpoint not found',
+    path: req.path,
+    method: req.method,
+    availableEndpoints: [
+      'GET /api/health',
+      'POST /api/admin/login',
+      'POST /api/admin/logout',
+      'GET /api/admin/verify',
+      'GET /api/admin/stats',
+      'PUT /api/admin/credentials',
+      'POST /api/applicants',
+      'GET /api/applicants',
+      'GET /api/applicants/:id',
+      'PATCH /api/applicants/:id',
+      'DELETE /api/applicants/:id'
+    ]
   });
 });
 
-// Initialize and start server
+// Global error handler
+app.use((err, req, res, next) => {
+  console.error('Unhandled error:', err);
+  res.status(500).json({
+    error: 'Internal server error',
+    message: process.env.NODE_ENV === 'production' ? 'Something went wrong' : err.message
+  });
+});
+
+// ============================================================================
+// Server Initialization
+// ============================================================================
+
 const startServer = async () => {
-  // Initialize admin credentials
   await initializeAdmin();
-  
-  // Connect to MongoDB
   isMongoConnected = await connectToMongoDB();
   
-  // If MongoDB is connected, sync admin credentials
   if (isMongoConnected) {
     await loadAdminFromDB();
     console.log('🚀 Server running with MongoDB Atlas');
@@ -704,6 +788,10 @@ const startServer = async () => {
     console.log(`🔐 Admin login endpoint: http://localhost:${PORT}/api/admin/login`);
     console.log(`📝 Applicants endpoint: http://localhost:${PORT}/api/applicants`);
     console.log(`🏥 Health check: http://localhost:${PORT}/api/health`);
+    
+    if (process.env.BACKEND_URL) {
+      console.log(`🌐 Public URL: ${process.env.BACKEND_URL}`);
+    }
   });
 };
 

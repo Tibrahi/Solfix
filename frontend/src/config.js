@@ -1,11 +1,55 @@
-// API Configuration
-// This file centralizes all API endpoint configuration
-// Update the API_BASE_URL to match your backend server
+// ============================================================================
+// API Configuration - Production-Safe Dynamic Resolution
+// ============================================================================
+// This file centralizes all API endpoint configuration with automatic
+// environment detection for seamless local/production switching.
+//
+// Environment Detection Priority:
+// 1. VITE_API_URL environment variable (explicit configuration)
+// 2. Relative path '/api' for same-origin deployment (Vercel + Render with rewrites)
+// 3. Fallback to localhost for development
+// ============================================================================
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+/**
+ * Dynamically resolve the API base URL based on environment
+ * 
+ * Resolution logic:
+ * - Production (Vercel): Uses VITE_API_URL env var set during build
+ * - Same-origin: Uses relative '/api' path if deployed together
+ * - Development: Uses localhost:5000
+ */
+const resolveApiBaseUrl = () => {
+  // 1. Check for explicit environment variable (highest priority)
+  const envUrl = import.meta.env.VITE_API_URL;
+  if (envUrl) {
+    console.log('[API Config] Using explicit VITE_API_URL:', envUrl);
+    return envUrl.replace(/\/$/, ''); // Remove trailing slash
+  }
+
+  // 2. For production deployment without explicit URL, use relative path
+  // This works when frontend and backend are on the same domain
+  // or when using reverse proxy/rewrites
+  if (import.meta.env.PROD) {
+    const relativeUrl = '/api';
+    console.log('[API Config] Production mode - using relative path:', relativeUrl);
+    return relativeUrl;
+  }
+
+  // 3. Development fallback
+  const devUrl = 'http://localhost:5000/api';
+  console.log('[API Config] Development mode - using:', devUrl);
+  return devUrl;
+};
+
+const API_BASE_URL = resolveApiBaseUrl();
+
+// ============================================================================
+// API Endpoints Configuration
+// ============================================================================
 
 export const config = {
   API_BASE_URL,
+  
   endpoints: {
     // Auth endpoints
     adminLogin: `${API_BASE_URL}/admin/login`,
@@ -22,10 +66,31 @@ export const config = {
     
     // Health check
     health: `${API_BASE_URL}/health`
+  },
+
+  // Helper to check if using relative API path
+  isRelativeApi: API_BASE_URL === '/api',
+  
+  // Helper to get full URL for a given endpoint
+  getFullUrl: (endpoint) => {
+    if (API_BASE_URL.startsWith('/')) {
+      return `${window.location.origin}${API_BASE_URL}${endpoint}`;
+    }
+    return `${API_BASE_URL}${endpoint}`;
   }
 };
 
-// Helper function for making API requests
+// ============================================================================
+// Enhanced API Request Handler with Retry Logic
+// ============================================================================
+
+/**
+ * Enhanced API request handler with:
+ * - Automatic JWT token injection
+ * - Retry logic for failed requests
+ * - Proper error handling
+ * - Request/response logging for debugging
+ */
 export const apiRequest = async (endpoint, options = {}) => {
   const token = localStorage.getItem('adminToken');
   
@@ -46,19 +111,115 @@ export const apiRequest = async (endpoint, options = {}) => {
     }
   };
   
+  // Add credentials for cookie-based auth if needed
+  if (!config.credentials) {
+    config.credentials = 'same-origin';
+  }
+  
+  let lastError = null;
+  const maxRetries = options.retries ?? 1;
+  
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      if (attempt > 0) {
+        console.log(`[API] Retry attempt ${attempt}/${maxRetries} for ${endpoint}`);
+        // Exponential backoff
+        await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 100));
+      }
+      
+      const response = await fetch(endpoint, config);
+      
+      // Handle unauthorized responses
+      if (response.status === 401) {
+        // Clear invalid token
+        localStorage.removeItem('adminToken');
+        localStorage.removeItem('adminUser');
+        
+        // Redirect to login if not already there
+        if (!window.location.pathname.includes('/admin/login')) {
+          window.location.href = '/admin/login';
+        }
+        
+        throw new Error('Session expired. Please login again.');
+      }
+      
+      // Try to parse JSON response
+      let data;
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        data = await response.json();
+      } else {
+        data = { message: await response.text() };
+      }
+      
+      if (!response.ok) {
+        throw new Error(data.error || data.message || `HTTP error! status: ${response.status}`);
+      }
+      
+      return data;
+      
+    } catch (error) {
+      lastError = error;
+      
+      // Don't retry on authentication errors
+      if (error.message?.includes('Session expired') || response?.status === 401) {
+        break;
+      }
+      
+      // Don't retry on client errors (4xx except 401/408/429)
+      if (response?.status >= 400 && response.status < 500 && 
+          ![401, 408, 429].includes(response.status)) {
+        break;
+      }
+      
+      console.error(`[API] Request failed (attempt ${attempt + 1}/${maxRetries + 1}):`, error);
+    }
+  }
+  
+  console.error('[API] All retry attempts failed for:', endpoint);
+  throw lastError;
+};
+
+// ============================================================================
+// API Health Check Utility
+// ============================================================================
+
+/**
+ * Check if the API is reachable
+ * Useful for diagnosing connection issues
+ */
+export const checkApiHealth = async () => {
   try {
-    const response = await fetch(endpoint, config);
-    const data = await response.json();
+    const response = await fetch(config.endpoints.health, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' }
+    });
     
-    if (!response.ok) {
-      throw new Error(data.error || `HTTP error! status: ${response.status}`);
+    if (response.ok) {
+      const data = await response.json();
+      return {
+        healthy: true,
+        data,
+        apiUrl: API_BASE_URL
+      };
     }
     
-    return data;
+    return {
+      healthy: false,
+      error: `Health check failed with status ${response.status}`,
+      apiUrl: API_BASE_URL
+    };
   } catch (error) {
-    console.error('API Request failed:', error);
-    throw error;
+    return {
+      healthy: false,
+      error: error.message,
+      apiUrl: API_BASE_URL
+    };
   }
 };
+
+// ============================================================================
+// Export for use in components
+// ============================================================================
 
 export default config;
