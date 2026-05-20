@@ -1,48 +1,47 @@
 // ============================================================================
-// API Configuration - Production-First Dynamic Resolution
+// API Configuration - Production-Safe Dynamic Resolution
 // ============================================================================
 // This file centralizes all API endpoint configuration with automatic
-// environment detection for seamless production deployment.
+// environment detection for seamless local/production switching.
 //
 // Environment Detection Priority:
-// 1. VITE_API_URL environment variable (explicit production configuration)
+// 1. VITE_API_URL environment variable (explicit configuration)
 // 2. Relative path '/api' for same-origin deployment (Vercel + Render with rewrites)
-// 3. Fallback to localhost ONLY for local development
+// 3. Fallback to localhost for development
 // ============================================================================
 
 /**
  * Dynamically resolve the API base URL based on environment
  * 
  * Resolution logic:
- * - Production: Uses VITE_API_URL env var set during build (REQUIRED)
- * - Same-origin: Uses relative '/api' path if deployed together
- * - Development: Uses localhost:5000 (only when VITE_API_URL is not set)
+ * - VITE_API_URL env var (highest priority) - used in production
+ * - Window config (for runtime injection via index.html)
+ * - Development: Uses localhost:5000
  * 
- * IMPORTANT: In production, always set VITE_API_URL environment variable
- * to your production backend URL (e.g., https://solfix.onrender.com/api)
+ * IMPORTANT: For Render deployment, VITE_API_URL MUST be set in Render dashboard
+ * as an environment variable. The relative '/api' fallback is REMOVED because
+ * frontend (solfix-1.onrender.com) and backend (solfix.onrender.com) are on different domains.
  */
 const resolveApiBaseUrl = () => {
   // 1. Check for explicit environment variable (highest priority)
-  // This is REQUIRED for production deployments
   const envUrl = import.meta.env.VITE_API_URL;
   if (envUrl) {
-    console.log('[API Config] Using configured API URL:', envUrl);
+    console.log('[API Config] Using explicit VITE_API_URL:', envUrl);
     return envUrl.replace(/\/$/, ''); // Remove trailing slash
   }
 
-  // 2. For production deployment without explicit URL, use relative path
-  // This works when frontend and backend are on the same domain
-  // or when using reverse proxy/rewrites (e.g., Vercel, Render)
-  if (import.meta.env.PROD) {
-    const relativeUrl = '/api';
-    console.warn('[API Config] Production mode without VITE_API_URL - using relative path:', relativeUrl);
-    console.warn('[API Config] For best results, set VITE_API_URL to your production backend URL');
-    return relativeUrl;
+  // 2. Check for window config (runtime injection fallback)
+  // This allows setting API URL via index.html script injection
+  if (typeof window !== 'undefined' && window.APP_CONFIG && window.APP_CONFIG.API_URL) {
+    const windowUrl = window.APP_CONFIG.API_URL;
+    console.log('[API Config] Using window.APP_CONFIG.API_URL:', windowUrl);
+    return windowUrl.replace(/\/$/, '');
   }
 
-  // 3. Development fallback (only when not in production and no env var)
+  // 3. Development fallback (only for local development)
   const devUrl = 'http://localhost:5000/api';
-  console.log('[API Config] Development mode - using:', devUrl);
+  console.log('[API Config] No production URL configured - using development URL:', devUrl);
+  console.warn('[API Config] WARNING: VITE_API_URL is not set! In production, this will cause API connection failures.');
   return devUrl;
 };
 
@@ -167,14 +166,19 @@ export const apiRequest = async (endpoint, options = {}) => {
       lastError = error;
       
       // Don't retry on authentication errors
-      if (error.message?.includes('Session expired') || response?.status === 401) {
+      if (error.message?.includes('Session expired')) {
         break;
       }
       
       // Don't retry on client errors (4xx except 401/408/429)
-      if (response?.status >= 400 && response.status < 500 && 
-          ![401, 408, 429].includes(response.status)) {
-        break;
+      if (error instanceof Error && error.message?.includes('HTTP error! status:')) {
+        const statusMatch = error.message.match(/status: (\d+)/);
+        if (statusMatch) {
+          const status = parseInt(statusMatch[1]);
+          if (status >= 400 && status < 500 && ![401, 408, 429].includes(status)) {
+            break;
+          }
+        }
       }
       
       console.error(`[API] Request failed (attempt ${attempt + 1}/${maxRetries + 1}):`, error);

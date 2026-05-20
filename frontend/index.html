@@ -43,6 +43,14 @@
     </style>
   </head>
   <body>
+    <!-- Runtime API Configuration Injection -->
+    <!-- This allows setting API_URL via Render environment variables at runtime -->
+    <script>
+      // APP_CONFIG will be injected by Render or build process
+      // If not present, config.js will fall back to VITE_API_URL or localhost
+      window.APP_CONFIG = window.APP_CONFIG || {};
+    </script>
+    
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
