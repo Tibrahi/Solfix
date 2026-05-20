@@ -64,47 +64,94 @@ export const connectToMongoDB = async () => {
 export const initializeAdmin = async () => {
   if (adminInitialized) return;
   
-  const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
+  const adminPassword = process.env.ADMIN_PASSWORD || 'Solfix@123';
   const adminEmail = process.env.ADMIN_EMAIL || 'admin@solfix.com';
   const adminPhone = process.env.ADMIN_PHONE || '+1234567890';
   const adminUsername = process.env.ADMIN_USERNAME || 'admin';
 
   if (!process.env.ADMIN_PASSWORD) {
-    console.warn('⚠️  ADMIN_PASSWORD not set. Using default password "admin123".');
+    console.warn('⚠️  ADMIN_PASSWORD not set. Using default password "Solfix@123". Please set ADMIN_PASSWORD in environment variables for production.');
   }
 
   const hashedPassword = await bcrypt.hash(adminPassword, 12);
-  adminCredentials = {
-    id: 'admin-001',
-    email: adminEmail,
-    phone: adminPhone,
-    username: adminUsername,
-    password: hashedPassword,
-    createdAt: new Date().toISOString()
-  };
-
+  
   // Store admin in MongoDB if connected
   if (isMongoConnected && adminsCollection) {
-    const existingAdmin = await adminsCollection.findOne({ email: adminCredentials.email });
-    if (!existingAdmin) {
-      await adminsCollection.insertOne({
-        _id: new ObjectId(adminCredentials.id),
-        ...adminCredentials
+    try {
+      const existingAdmin = await adminsCollection.findOne({ 
+        $or: [
+          { email: adminEmail },
+          { username: adminUsername }
+        ]
       });
-      console.log('✅ Admin credentials saved to MongoDB');
-    } else {
+      
+      if (!existingAdmin) {
+        // Create new admin with a proper ObjectId
+        const newId = new ObjectId();
+        adminCredentials = {
+          id: newId.toString(),
+          email: adminEmail,
+          phone: adminPhone,
+          username: adminUsername,
+          password: hashedPassword,
+          createdAt: new Date().toISOString()
+        };
+        
+        await adminsCollection.insertOne({
+          _id: newId,
+          email: adminCredentials.email,
+          phone: adminCredentials.phone,
+          username: adminCredentials.username,
+          password: adminCredentials.password,
+          createdAt: adminCredentials.createdAt
+        });
+        console.log('✅ Admin credentials created in MongoDB');
+      } else {
+        // Load existing admin from MongoDB
+        adminCredentials = {
+          id: existingAdmin._id.toString(),
+          email: existingAdmin.email,
+          phone: existingAdmin.phone || adminPhone,
+          username: existingAdmin.username,
+          password: existingAdmin.password,
+          createdAt: existingAdmin.createdAt
+        };
+        console.log('✅ Admin credentials loaded from MongoDB');
+        
+        // Update MongoDB with any missing fields from .env (except password)
+        const updateData = {};
+        if (!existingAdmin.phone && adminPhone) updateData.phone = adminPhone;
+        if (Object.keys(updateData).length > 0) {
+          await adminsCollection.updateOne(
+            { _id: existingAdmin._id },
+            { $set: updateData }
+          );
+        }
+      }
+    } catch (error) {
+      console.error('❌ Error initializing admin in MongoDB:', error.message);
+      console.log('⚠️  Using in-memory admin credentials');
+      // Fallback to in-memory
       adminCredentials = {
-        id: existingAdmin._id.toString(),
-        email: existingAdmin.email,
-        phone: existingAdmin.phone,
-        username: existingAdmin.username,
-        password: existingAdmin.password,
-        createdAt: existingAdmin.createdAt
+        id: 'admin-001',
+        email: adminEmail,
+        phone: adminPhone,
+        username: adminUsername,
+        password: hashedPassword,
+        createdAt: new Date().toISOString()
       };
-      console.log('✅ Admin credentials loaded from MongoDB');
     }
   } else {
-    console.log('✅ Admin credentials initialized (in-memory)');
+    // In-memory mode
+    adminCredentials = {
+      id: 'admin-001',
+      email: adminEmail,
+      phone: adminPhone,
+      username: adminUsername,
+      password: hashedPassword,
+      createdAt: new Date().toISOString()
+    };
+    console.log('✅ Admin credentials initialized (in-memory mode - MongoDB not connected)');
   }
   
   adminInitialized = true;

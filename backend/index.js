@@ -1,9 +1,23 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { MongoClient, ObjectId } from 'mongodb';
+import { ObjectId } from 'mongodb';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
+import {
+  connectToMongoDB,
+  initializeAdmin,
+  loadAdminFromDB,
+  createSession,
+  validateSession,
+  deleteSession,
+  getAdminCredentials,
+  getIsMongoConnected,
+  getApplicantsCollection,
+  getAdminsCollection,
+  getSessionsCollection,
+  getInMemoryApplicants
+} from './api/lib/db.js';
 
 dotenv.config();
 
@@ -25,23 +39,18 @@ const PORT = process.env.PORT || 5000;
  * - Render preview URLs (e.g., 'solfix-frontend-abc123.onrender.com')
  */
 const allowedOrigins = (() => {
-  const origins = [];
+  const origins = [
+    // Local development
+    'http://localhost:5173',
+    'http://localhost:3000',
+    'http://127.0.0.1:5173',
+    'http://127.0.0.1:3000',
+  ];
 
   // Add origins from environment variable (comma-separated)
-  // In production, this should contain your frontend domain(s)
   if (process.env.ALLOWED_ORIGINS) {
     const envOrigins = process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim());
     origins.push(...envOrigins);
-  }
-
-  // Add development origins only in non-production environment
-  if (process.env.NODE_ENV !== 'production') {
-    origins.push(
-      'http://localhost:5173',
-      'http://localhost:3000',
-      'http://127.0.0.1:5173',
-      'http://127.0.0.1:3000'
-    );
   }
 
   // Add Render URLs if BACKEND_URL is set
@@ -109,182 +118,8 @@ app.use((req, res, next) => {
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// ============================================================================
-// MongoDB Connection
-// ============================================================================
-
-let db;
-let applicantsCollection;
-let adminsCollection;
-let sessionsCollection;
-let mongoClient;
-
-const connectToMongoDB = async () => {
-  try {
-    const mongoUri = process.env.MONGODB_URI;
-    
-    if (!mongoUri || mongoUri.includes('<username>') || mongoUri.includes('<password>')) {
-      console.warn('⚠️  MongoDB URI not configured. Please update the MONGODB_URI in .env file with your MongoDB Atlas connection string.');
-      console.warn('⚠️  The application will run with limited functionality until MongoDB is configured.');
-      return false;
-    }
-
-    mongoClient = new MongoClient(mongoUri);
-    await mongoClient.connect();
-    console.log('✅ Connected to MongoDB Atlas');
-    
-    db = mongoClient.db();
-    applicantsCollection = db.collection('applicants');
-    adminsCollection = db.collection('admins');
-    sessionsCollection = db.collection('sessions');
-    
-    // Create indexes for better performance
-    await applicantsCollection.createIndex({ submittedAt: -1 });
-    await applicantsCollection.createIndex({ email: 1 });
-    await applicantsCollection.createIndex({ status: 1 });
-    await sessionsCollection.createIndex({ token: 1 }, { unique: true });
-    await sessionsCollection.createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
-    
-    return true;
-  } catch (error) {
-    console.error('❌ MongoDB connection error:', error.message);
-    return false;
-  }
-};
-
-// In-memory fallback storage (when MongoDB is not configured)
-const inMemoryApplicants = [];
-const inMemorySessions = new Map();
-let adminCredentials = null;
-let isMongoConnected = false;
-
-// ============================================================================
-// Admin Credentials Management
-// ============================================================================
-
-const initializeAdmin = async () => {
-  const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
-  const adminEmail = process.env.ADMIN_EMAIL || 'admin@solfix.com';
-  const adminPhone = process.env.ADMIN_PHONE || '+1234567890';
-  const adminUsername = process.env.ADMIN_USERNAME || 'admin';
-
-  if (!process.env.ADMIN_PASSWORD) {
-    console.warn('⚠️  ADMIN_PASSWORD not set. Using default password "admin123". Please set ADMIN_PASSWORD in environment variables for production.');
-  }
-
-  const hashedPassword = await bcrypt.hash(adminPassword, 12);
-  adminCredentials = {
-    id: 'admin-001',
-    email: adminEmail,
-    phone: adminPhone,
-    username: adminUsername,
-    password: hashedPassword,
-    createdAt: new Date().toISOString()
-  };
-
-  // Store admin in MongoDB if connected
-  if (isMongoConnected && adminsCollection) {
-    const existingAdmin = await adminsCollection.findOne({ email: adminCredentials.email });
-    if (!existingAdmin) {
-      await adminsCollection.insertOne({
-        _id: new ObjectId(adminCredentials.id),
-        ...adminCredentials
-      });
-      console.log('✅ Admin credentials saved to MongoDB');
-    } else {
-      adminCredentials = {
-        id: existingAdmin._id.toString(),
-        email: existingAdmin.email,
-        phone: existingAdmin.phone,
-        username: existingAdmin.username,
-        password: existingAdmin.password,
-        createdAt: existingAdmin.createdAt
-      };
-      console.log('✅ Admin credentials loaded from MongoDB');
-    }
-  } else {
-    console.log('✅ Admin credentials initialized (in-memory)');
-  }
-};
-
-const loadAdminFromDB = async () => {
-  if (isMongoConnected && adminsCollection) {
-    const existingAdmin = await adminsCollection.findOne({});
-    if (existingAdmin) {
-      adminCredentials = {
-        id: existingAdmin._id.toString(),
-        email: existingAdmin.email,
-        phone: existingAdmin.phone,
-        username: existingAdmin.username,
-        password: existingAdmin.password,
-        createdAt: existingAdmin.createdAt
-      };
-      console.log('✅ Admin credentials synced from MongoDB');
-    }
-  }
-};
-
-// ============================================================================
-// Session Management
-// ============================================================================
-
-const generateSessionToken = () => {
-  return crypto.randomBytes(64).toString('hex');
-};
-
-const createSession = async (adminData) => {
-  const token = generateSessionToken();
-  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
-
-  const session = {
-    token,
-    adminId: adminData.id,
-    adminEmail: adminData.email,
-    adminUsername: adminData.username,
-    createdAt: new Date(),
-    expiresAt
-  };
-
-  if (isMongoConnected && sessionsCollection) {
-    await sessionsCollection.insertOne(session);
-  } else {
-    inMemorySessions.set(token, session);
-  }
-
-  return token;
-};
-
-const validateSession = async (token) => {
-  if (!token) return null;
-
-  let session;
-  if (isMongoConnected && sessionsCollection) {
-    session = await sessionsCollection.findOne({ token });
-  } else {
-    session = inMemorySessions.get(token);
-  }
-
-  if (!session) return null;
-
-  if (new Date() > new Date(session.expiresAt)) {
-    if (isMongoConnected && sessionsCollection) {
-      await sessionsCollection.deleteOne({ token });
-    } else {
-      inMemorySessions.delete(token);
-    }
-    return null;
-  }
-
-  return session;
-};
-
-const deleteSession = async (token) => {
-  if (isMongoConnected && sessionsCollection) {
-    await sessionsCollection.deleteOne({ token });
-  } else {
-    inMemorySessions.delete(token);
-  }
-};
+// Get references from db.js module
+const inMemoryApplicants = getInMemoryApplicants();
 
 // ============================================================================
 // Authentication Middleware
@@ -318,8 +153,26 @@ const authenticateSession = async (req, res, next) => {
 // Routes
 // ============================================================================
 
+// Root health check endpoint (for Render uptime monitoring)
+app.get('/', (req, res) => {
+  const isMongoConnected = getIsMongoConnected();
+  res.json({
+    status: 'ok',
+    service: 'solfix-backend',
+    mongodb: isMongoConnected ? 'connected' : 'disconnected',
+    timestamp: new Date().toISOString(),
+    version: '1.0.0',
+    endpoints: {
+      health: '/api/health',
+      login: '/api/admin/login',
+      applicants: '/api/applicants'
+    }
+  });
+});
+
 // Health check endpoint (public)
 app.get('/api/health', (req, res) => {
+  const isMongoConnected = getIsMongoConnected();
   res.json({
     status: 'ok',
     mongodb: isMongoConnected ? 'connected' : 'disconnected',
@@ -331,34 +184,51 @@ app.get('/api/health', (req, res) => {
 // Admin Login
 app.post('/api/admin/login', async (req, res) => {
   try {
+    await connectToMongoDB();
+    await initializeAdmin();
+    
     const { identifier, password } = req.body;
 
     if (!identifier || !password) {
       return res.status(400).json({ error: 'Email/phone/username and password are required' });
     }
 
-    await loadAdminFromDB();
-
+    // Get current admin credentials (already initialized)
+    let adminCredentials = getAdminCredentials();
+    
+    // If no credentials in memory, try to load from DB
     if (!adminCredentials) {
+      await loadAdminFromDB();
+      adminCredentials = getAdminCredentials();
+    }
+    
+    if (!adminCredentials) {
+      console.error('❌ No admin credentials available');
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
+    // Check if identifier matches email, phone, or username (case-insensitive for email/username)
+    const identifierLower = identifier.toLowerCase();
     const isAdmin = (
-      adminCredentials.email === identifier ||
+      adminCredentials.email?.toLowerCase() === identifierLower ||
       adminCredentials.phone === identifier ||
-      adminCredentials.username === identifier
+      adminCredentials.username?.toLowerCase() === identifierLower
     );
 
     if (!isAdmin) {
+      console.log(`❌ Login attempt with unknown identifier: ${identifier}`);
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
     const validPassword = await bcrypt.compare(password, adminCredentials.password);
     if (!validPassword) {
+      console.log(`❌ Invalid password for admin: ${adminCredentials.username}`);
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
     const token = await createSession(adminCredentials);
+    
+    console.log(`✅ Admin login successful: ${adminCredentials.username}`);
 
     res.json({
       success: true,
@@ -376,10 +246,20 @@ app.post('/api/admin/login', async (req, res) => {
 });
 
 // Admin Logout
-app.post('/api/admin/logout', authenticateSession, async (req, res) => {
+app.post('/api/admin/logout', async (req, res) => {
   try {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
+    
+    if (!token) {
+      return res.status(401).json({ error: 'No token provided' });
+    }
+    
+    const session = await validateSession(token);
+    if (!session) {
+      return res.status(401).json({ error: 'Invalid or expired session' });
+    }
+    
     await deleteSession(token);
     res.json({ success: true, message: 'Logged out successfully' });
   } catch (error) {
@@ -388,20 +268,38 @@ app.post('/api/admin/logout', authenticateSession, async (req, res) => {
 });
 
 // Verify session
-app.get('/api/admin/verify', authenticateSession, (req, res) => {
-  res.json({
-    valid: true,
-    admin: {
-      id: req.admin.id,
-      username: req.admin.username,
-      email: req.admin.email
+app.get('/api/admin/verify', async (req, res) => {
+  try {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+    
+    if (!token) {
+      return res.status(401).json({ valid: false, error: 'No token provided' });
     }
-  });
+    
+    const session = await validateSession(token);
+    if (!session) {
+      return res.status(401).json({ valid: false, error: 'Invalid or expired session' });
+    }
+    
+    res.json({
+      valid: true,
+      admin: {
+        id: session.adminId,
+        username: session.adminUsername,
+        email: session.adminEmail
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ valid: false, error: 'Server error during verification' });
+  }
 });
 
 // Submit registration form (public)
 app.post('/api/applicants', async (req, res) => {
   try {
+    await connectToMongoDB();
+    
     const applicantData = req.body;
 
     if (!applicantData.fullName || !applicantData.email || !applicantData.mobileNumber) {
@@ -416,6 +314,8 @@ app.post('/api/applicants', async (req, res) => {
     };
 
     let savedApplicant;
+    const isMongoConnected = getIsMongoConnected();
+    const applicantsCollection = getApplicantsCollection();
 
     if (isMongoConnected && applicantsCollection) {
       const result = await applicantsCollection.insertOne(newApplicant);
@@ -424,6 +324,7 @@ app.post('/api/applicants', async (req, res) => {
         ...newApplicant
       };
     } else {
+      const inMemoryApplicants = getInMemoryApplicants();
       savedApplicant = {
         id: String(inMemoryApplicants.length + 1),
         ...newApplicant
@@ -445,8 +346,23 @@ app.post('/api/applicants', async (req, res) => {
 });
 
 // Get all applicants (protected)
-app.get('/api/applicants', authenticateSession, async (req, res) => {
+app.get('/api/applicants', async (req, res) => {
   try {
+    // Verify authentication
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+    
+    if (!token) {
+      return res.status(401).json({ error: 'Access denied. No token provided.' });
+    }
+    
+    const session = await validateSession(token);
+    if (!session) {
+      return res.status(403).json({ error: 'Invalid or expired session' });
+    }
+
+    await connectToMongoDB();
+    
     const { status, search, sortBy = 'submittedAt', order = 'desc' } = req.query;
 
     let query = {};
@@ -465,6 +381,8 @@ app.get('/api/applicants', authenticateSession, async (req, res) => {
 
     let applicants = [];
     let total = 0;
+    const isMongoConnected = getIsMongoConnected();
+    const applicantsCollection = getApplicantsCollection();
 
     if (isMongoConnected && applicantsCollection) {
       total = await applicantsCollection.countDocuments(query);
@@ -482,6 +400,7 @@ app.get('/api/applicants', authenticateSession, async (req, res) => {
         ...app
       }));
     } else {
+      const inMemoryApplicants = getInMemoryApplicants();
       let filteredApplicants = [...inMemoryApplicants];
 
       if (status && status !== 'all') {
@@ -520,9 +439,26 @@ app.get('/api/applicants', authenticateSession, async (req, res) => {
 });
 
 // Get single applicant (protected)
-app.get('/api/applicants/:id', authenticateSession, async (req, res) => {
+app.get('/api/applicants/:id', async (req, res) => {
   try {
+    // Verify authentication
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+    
+    if (!token) {
+      return res.status(401).json({ error: 'Access denied. No token provided.' });
+    }
+    
+    const session = await validateSession(token);
+    if (!session) {
+      return res.status(403).json({ error: 'Invalid or expired session' });
+    }
+
+    await connectToMongoDB();
+    
     let applicant;
+    const isMongoConnected = getIsMongoConnected();
+    const applicantsCollection = getApplicantsCollection();
 
     if (isMongoConnected && applicantsCollection) {
       const result = await applicantsCollection.findOne({ 
@@ -536,6 +472,7 @@ app.get('/api/applicants/:id', authenticateSession, async (req, res) => {
         };
       }
     } else {
+      const inMemoryApplicants = getInMemoryApplicants();
       applicant = inMemoryApplicants.find(a => a.id === req.params.id);
     }
 
@@ -551,9 +488,26 @@ app.get('/api/applicants/:id', authenticateSession, async (req, res) => {
 });
 
 // Update applicant status (protected)
-app.patch('/api/applicants/:id', authenticateSession, async (req, res) => {
+app.patch('/api/applicants/:id', async (req, res) => {
   try {
+    // Verify authentication
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+    
+    if (!token) {
+      return res.status(401).json({ error: 'Access denied. No token provided.' });
+    }
+    
+    const session = await validateSession(token);
+    if (!session) {
+      return res.status(403).json({ error: 'Invalid or expired session' });
+    }
+
+    await connectToMongoDB();
+    
     const { status, notes } = req.body;
+    const isMongoConnected = getIsMongoConnected();
+    const applicantsCollection = getApplicantsCollection();
 
     if (isMongoConnected && applicantsCollection) {
       const updateData = {};
@@ -582,6 +536,7 @@ app.patch('/api/applicants/:id', authenticateSession, async (req, res) => {
         }
       });
     } else {
+      const inMemoryApplicants = getInMemoryApplicants();
       const applicant = inMemoryApplicants.find(a => a.id === req.params.id);
 
       if (!applicant) {
@@ -601,8 +556,26 @@ app.patch('/api/applicants/:id', authenticateSession, async (req, res) => {
 });
 
 // Delete applicant (protected)
-app.delete('/api/applicants/:id', authenticateSession, async (req, res) => {
+app.delete('/api/applicants/:id', async (req, res) => {
   try {
+    // Verify authentication
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+    
+    if (!token) {
+      return res.status(401).json({ error: 'Access denied. No token provided.' });
+    }
+    
+    const session = await validateSession(token);
+    if (!session) {
+      return res.status(403).json({ error: 'Invalid or expired session' });
+    }
+
+    await connectToMongoDB();
+    
+    const isMongoConnected = getIsMongoConnected();
+    const applicantsCollection = getApplicantsCollection();
+
     if (isMongoConnected && applicantsCollection) {
       const result = await applicantsCollection.deleteOne({ 
         _id: new ObjectId(req.params.id) 
@@ -614,6 +587,7 @@ app.delete('/api/applicants/:id', authenticateSession, async (req, res) => {
 
       res.json({ success: true, message: 'Applicant deleted successfully' });
     } else {
+      const inMemoryApplicants = getInMemoryApplicants();
       const index = inMemoryApplicants.findIndex(a => a.id === req.params.id);
 
       if (index === -1) {
@@ -630,14 +604,31 @@ app.delete('/api/applicants/:id', authenticateSession, async (req, res) => {
 });
 
 // Get dashboard statistics (protected)
-app.get('/api/admin/stats', authenticateSession, async (req, res) => {
+app.get('/api/admin/stats', async (req, res) => {
   try {
+    // Verify authentication
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+    
+    if (!token) {
+      return res.status(401).json({ error: 'Access denied. No token provided.' });
+    }
+    
+    const session = await validateSession(token);
+    if (!session) {
+      return res.status(403).json({ error: 'Invalid or expired session' });
+    }
+
+    await connectToMongoDB();
+    
     let totalApplicants = 0;
     let pendingCount = 0;
     let approvedCount = 0;
     let rejectedCount = 0;
     let courseDistribution = {};
     let recentSubmissions = 0;
+    const isMongoConnected = getIsMongoConnected();
+    const applicantsCollection = getApplicantsCollection();
 
     if (isMongoConnected && applicantsCollection) {
       const allApplicants = await applicantsCollection.find({}).toArray();
@@ -655,6 +646,7 @@ app.get('/api/admin/stats', authenticateSession, async (req, res) => {
       weekAgo.setDate(weekAgo.getDate() - 7);
       recentSubmissions = allApplicants.filter(a => new Date(a.submittedAt) >= weekAgo).length;
     } else {
+      const inMemoryApplicants = getInMemoryApplicants();
       totalApplicants = inMemoryApplicants.length;
       pendingCount = inMemoryApplicants.filter(a => a.status === 'pending').length;
       approvedCount = inMemoryApplicants.filter(a => a.status === 'approved').length;
@@ -688,10 +680,27 @@ app.get('/api/admin/stats', authenticateSession, async (req, res) => {
 });
 
 // Update admin credentials (protected)
-app.put('/api/admin/credentials', authenticateSession, async (req, res) => {
+app.put('/api/admin/credentials', async (req, res) => {
   try {
+    // Verify authentication
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+    
+    if (!token) {
+      return res.status(401).json({ error: 'Access denied. No token provided.' });
+    }
+    
+    const session = await validateSession(token);
+    if (!session) {
+      return res.status(403).json({ error: 'Invalid or expired session' });
+    }
+
+    await connectToMongoDB();
+    await initializeAdmin();
+    
     const { email, phone, username, currentPassword, newPassword } = req.body;
 
+    const adminCredentials = getAdminCredentials();
     if (!adminCredentials) {
       return res.status(401).json({ error: 'Admin credentials not available' });
     }
@@ -709,6 +718,9 @@ app.put('/api/admin/credentials', authenticateSession, async (req, res) => {
       const hashed = await bcrypt.hash(newPassword, 12);
       adminCredentials.password = hashed;
     }
+
+    const isMongoConnected = getIsMongoConnected();
+    const adminsCollection = getAdminsCollection();
 
     if (isMongoConnected && adminsCollection) {
       await adminsCollection.updateOne(
@@ -778,27 +790,25 @@ app.use((err, req, res, next) => {
 // ============================================================================
 
 const startServer = async () => {
-  await initializeAdmin();
-  isMongoConnected = await connectToMongoDB();
+  const isMongoConnected = await connectToMongoDB();
   
   if (isMongoConnected) {
+    await initializeAdmin();
     await loadAdminFromDB();
     console.log('🚀 Server running with MongoDB Atlas');
   } else {
+    await initializeAdmin();
     console.log('⚠️  Server running with in-memory storage (data will be lost on restart)');
   }
 
   app.listen(PORT, () => {
     console.log(`📡 Server running on port ${PORT}`);
+    console.log(`🔐 Admin login endpoint: http://localhost:${PORT}/api/admin/login`);
+    console.log(`📝 Applicants endpoint: http://localhost:${PORT}/api/applicants`);
+    console.log(`🏥 Health check: http://localhost:${PORT}/api/health`);
     
-    // Log endpoints using production URL if available, otherwise localhost for development
-    const baseUrl = process.env.BACKEND_URL || `http://localhost:${PORT}`;
-    console.log(`🔐 Admin login endpoint: ${baseUrl}/api/admin/login`);
-    console.log(`📝 Applicants endpoint: ${baseUrl}/api/applicants`);
-    console.log(`🏥 Health check: ${baseUrl}/api/health`);
-    
-    if (process.env.NODE_ENV === 'production' && process.env.BACKEND_URL) {
-      console.log(`🌐 Production URL: ${process.env.BACKEND_URL}`);
+    if (process.env.BACKEND_URL) {
+      console.log(`🌐 Public URL: ${process.env.BACKEND_URL}`);
     }
   });
 };
