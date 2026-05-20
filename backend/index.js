@@ -25,18 +25,23 @@ const PORT = process.env.PORT || 5000;
  * - Render preview URLs (e.g., 'solfix-frontend-abc123.onrender.com')
  */
 const allowedOrigins = (() => {
-  const origins = [
-    // Local development
-    'http://localhost:5173',
-    'http://localhost:3000',
-    'http://127.0.0.1:5173',
-    'http://127.0.0.1:3000',
-  ];
+  const origins = [];
 
   // Add origins from environment variable (comma-separated)
+  // In production, this should contain your frontend domain(s)
   if (process.env.ALLOWED_ORIGINS) {
     const envOrigins = process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim());
     origins.push(...envOrigins);
+  }
+
+  // Add development origins only in non-production environment
+  if (process.env.NODE_ENV !== 'production') {
+    origins.push(
+      'http://localhost:5173',
+      'http://localhost:3000',
+      'http://127.0.0.1:5173',
+      'http://127.0.0.1:3000'
+    );
   }
 
   // Add Render URLs if BACKEND_URL is set
@@ -785,12 +790,15 @@ const startServer = async () => {
 
   app.listen(PORT, () => {
     console.log(`📡 Server running on port ${PORT}`);
-    console.log(`🔐 Admin login endpoint: http://localhost:${PORT}/api/admin/login`);
-    console.log(`📝 Applicants endpoint: http://localhost:${PORT}/api/applicants`);
-    console.log(`🏥 Health check: http://localhost:${PORT}/api/health`);
     
-    if (process.env.BACKEND_URL) {
-      console.log(`🌐 Public URL: ${process.env.BACKEND_URL}`);
+    // Log endpoints using production URL if available, otherwise localhost for development
+    const baseUrl = process.env.BACKEND_URL || `http://localhost:${PORT}`;
+    console.log(`🔐 Admin login endpoint: ${baseUrl}/api/admin/login`);
+    console.log(`📝 Applicants endpoint: ${baseUrl}/api/applicants`);
+    console.log(`🏥 Health check: ${baseUrl}/api/health`);
+    
+    if (process.env.NODE_ENV === 'production' && process.env.BACKEND_URL) {
+      console.log(`🌐 Production URL: ${process.env.BACKEND_URL}`);
     }
   });
 };

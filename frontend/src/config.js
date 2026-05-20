@@ -1,41 +1,46 @@
 // ============================================================================
-// API Configuration - Production-Safe Dynamic Resolution
+// API Configuration - Production-First Dynamic Resolution
 // ============================================================================
 // This file centralizes all API endpoint configuration with automatic
-// environment detection for seamless local/production switching.
+// environment detection for seamless production deployment.
 //
 // Environment Detection Priority:
-// 1. VITE_API_URL environment variable (explicit configuration)
+// 1. VITE_API_URL environment variable (explicit production configuration)
 // 2. Relative path '/api' for same-origin deployment (Vercel + Render with rewrites)
-// 3. Fallback to localhost for development
+// 3. Fallback to localhost ONLY for local development
 // ============================================================================
 
 /**
  * Dynamically resolve the API base URL based on environment
  * 
  * Resolution logic:
- * - Production (Vercel): Uses VITE_API_URL env var set during build
+ * - Production: Uses VITE_API_URL env var set during build (REQUIRED)
  * - Same-origin: Uses relative '/api' path if deployed together
- * - Development: Uses localhost:5000
+ * - Development: Uses localhost:5000 (only when VITE_API_URL is not set)
+ * 
+ * IMPORTANT: In production, always set VITE_API_URL environment variable
+ * to your production backend URL (e.g., https://solfix.onrender.com/api)
  */
 const resolveApiBaseUrl = () => {
   // 1. Check for explicit environment variable (highest priority)
+  // This is REQUIRED for production deployments
   const envUrl = import.meta.env.VITE_API_URL;
   if (envUrl) {
-    console.log('[API Config] Using explicit VITE_API_URL:', envUrl);
+    console.log('[API Config] Using configured API URL:', envUrl);
     return envUrl.replace(/\/$/, ''); // Remove trailing slash
   }
 
   // 2. For production deployment without explicit URL, use relative path
   // This works when frontend and backend are on the same domain
-  // or when using reverse proxy/rewrites
+  // or when using reverse proxy/rewrites (e.g., Vercel, Render)
   if (import.meta.env.PROD) {
     const relativeUrl = '/api';
-    console.log('[API Config] Production mode - using relative path:', relativeUrl);
+    console.warn('[API Config] Production mode without VITE_API_URL - using relative path:', relativeUrl);
+    console.warn('[API Config] For best results, set VITE_API_URL to your production backend URL');
     return relativeUrl;
   }
 
-  // 3. Development fallback
+  // 3. Development fallback (only when not in production and no env var)
   const devUrl = 'http://localhost:5000/api';
   console.log('[API Config] Development mode - using:', devUrl);
   return devUrl;
