@@ -64,13 +64,13 @@ export const connectToMongoDB = async () => {
 export const initializeAdmin = async () => {
   if (adminInitialized) return;
   
-  const adminPassword = process.env.ADMIN_PASSWORD || 'Solfix@123';
+  const adminPassword = process.env.ADMIN_PASSWORD;
   const adminEmail = process.env.ADMIN_EMAIL || 'admin@solfix.com';
   const adminPhone = process.env.ADMIN_PHONE || '+1234567890';
   const adminUsername = process.env.ADMIN_USERNAME || 'admin';
 
-  if (!process.env.ADMIN_PASSWORD) {
-    console.warn('⚠️  ADMIN_PASSWORD not set. Using default password "Solfix@123". Please set ADMIN_PASSWORD in environment variables for production.');
+  if (!adminPassword) {
+    throw new Error('ADMIN_PASSWORD environment variable is required. Please set it in your .env file.');
   }
 
   const hashedPassword = await bcrypt.hash(adminPassword, 12);

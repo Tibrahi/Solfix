@@ -145,6 +145,7 @@ const authenticateSession = async (req, res, next) => {
     };
     next();
   } catch (error) {
+    console.error('[Auth] Session validation error:', error.message);
     res.status(403).json({ error: 'Invalid or expired session' });
   }
 };

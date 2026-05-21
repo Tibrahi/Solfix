@@ -26,7 +26,6 @@ const resolveApiBaseUrl = () => {
   // 1. Check for explicit environment variable (highest priority)
   const envUrl = import.meta.env.VITE_API_URL;
   if (envUrl) {
-    console.log('[API Config] Using explicit VITE_API_URL:', envUrl);
     return envUrl.replace(/\/$/, ''); // Remove trailing slash
   }
 
@@ -34,15 +33,11 @@ const resolveApiBaseUrl = () => {
   // This allows setting API URL via index.html script injection
   if (typeof window !== 'undefined' && window.APP_CONFIG && window.APP_CONFIG.API_URL) {
     const windowUrl = window.APP_CONFIG.API_URL;
-    console.log('[API Config] Using window.APP_CONFIG.API_URL:', windowUrl);
     return windowUrl.replace(/\/$/, '');
   }
 
   // 3. Development fallback (only for local development)
-  const devUrl = 'http://localhost:5000/api';
-  console.log('[API Config] No production URL configured - using development URL:', devUrl);
-  console.warn('[API Config] WARNING: VITE_API_URL is not set! In production, this will cause API connection failures.');
-  return devUrl;
+  return 'http://localhost:5000/api';
 };
 
 const API_BASE_URL = resolveApiBaseUrl();
@@ -126,7 +121,6 @@ export const apiRequest = async (endpoint, options = {}) => {
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       if (attempt > 0) {
-        console.log(`[API] Retry attempt ${attempt}/${maxRetries} for ${endpoint}`);
         // Exponential backoff
         await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 100));
       }
@@ -181,12 +175,18 @@ export const apiRequest = async (endpoint, options = {}) => {
         }
       }
       
-      console.error(`[API] Request failed (attempt ${attempt + 1}/${maxRetries + 1}):`, error);
+      // Log error without exposing sensitive endpoint details in production
+      if (import.meta.env.DEV) {
+        console.error(`[API] Request failed (attempt ${attempt + 1}/${maxRetries + 1}):`, error);
+      }
     }
   }
   
-  console.error('[API] All retry attempts failed for:', endpoint);
-  throw lastError;
+  // Only throw detailed error in development
+  if (import.meta.env.DEV) {
+    throw lastError;
+  }
+  throw new Error('API request failed. Please try again.');
 };
 
 // ============================================================================
