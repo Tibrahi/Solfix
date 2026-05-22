@@ -18,7 +18,7 @@ export default function CourseSection() {
             {/* Course Image */}
             <div className="relative h-64 md:h-80 overflow-hidden">
               <img
-                src="https://images.pexels.com/photos-1714899927423-7cc9e9fef368?w=800&h=400&fit=crop"
+                src="https://media.istockphoto.com/id/641535676/photo/engineer.webp?a=1&b=1&s=612x612&w=0&k=20&c=f_G-4b99vcHiZbHXFscwZMrYiDeqajQ5aC3NQOAb4w4="
                 alt="Board Level Repair Training"
                 className="w-full h-full object-cover hover:brightness-110 transition-all duration-700"
                 loading="lazy"

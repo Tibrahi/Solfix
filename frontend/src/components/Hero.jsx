@@ -48,7 +48,7 @@ export default function Hero() {
           {/* Right Side - Image */}
           <div className="relative">
             <img
-              src="https://images.pexels.com/photos/3587620/pexels-photo-3587620.jpeg?w=600&h=400&fit=crop"
+              src="https://images.unsplash.com/photo-1640552421447-1808735878e1?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MTB8fG1hY2Jvb2slMjBtb3RoZXJib2FyZHxlbnwwfHwwfHx8MA%3D%3D"
               alt="Electronics repair technician working on circuit board"
               className="w-full h-auto rounded-xl shadow-2xl hover:shadow-2xl transition-all duration-500"
               loading="lazy"
