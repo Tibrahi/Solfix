@@ -2,32 +2,32 @@ const benefits = [
   {
     title: 'Certificate after Training',
     desc: 'Receive an official certificate upon completion, validating your repair skills.',
-    image: 'https://images.pexels.com/photos/3728092/pexels-photo-3728092.jpeg?w=400&h=250&fit=crop'
+    image: 'https://images.unsplash.com/photo-1563770660941-20978e870e26?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MTh8fGNvbXB1dGVyJTIwcmVwYWlyfGVufDB8fDB8fHww'
   },
   {
     title: 'Unlimited Sit-ins',
     desc: 'Attend multiple sessions at no extra cost until you master the material.',
-    image: 'https://images.pexels.com/photos-1443890985614-41c1cffcca74?w=400&h=250&fit=crop'
+    image: 'https://plus.unsplash.com/premium_photo-1726862557521-000a02f0a156?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MXx8ZWxlY3Ryb25pYyUyMHJlcGFpcnxlbnwwfHwwfHx8MA%3D%3D'
   },
   {
     title: 'Exclusive Group Support',
     desc: 'Join our private community for ongoing help and networking with peers.',
-    image: 'https://images.pexels.com/photos/3807517/pexels-photo-3807517.jpeg?w=400&h=250&fit=crop'
+    image: 'https://images.unsplash.com/photo-1646821804389-9778ce2a4fd7?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8NHx8ZWxlY3Ryb25pYyUyMHJlcGFpcnxlbnwwfHwwfHx8MA%3D%3D'
   },
   {
     title: 'Professional Mentors',
     desc: 'Learn directly from experienced repair technicians with years of field experience.',
-    image: 'https://images.pexels.com/photos-1438761681033-6461ffad8d80?w=400&h=250&fit=crop'
+    image: 'https://media.istockphoto.com/id/898644098/photo/man-fixing-electronic-circuit.webp?a=1&b=1&s=612x612&w=0&k=20&c=WN8cfTgcE8-qhg85JDNOkpajIhp99XKflNIEGR5CTNk='
   },
   {
     title: 'Hands-on Diagnostics',
     desc: 'Work with real faulty boards and devices to build practical skills.',
-    image: 'https://images.pexels.com/photos-1516321318423-f06143ca507e?w=400&h=250&fit=crop'
+    image: 'https://images.unsplash.com/photo-1654687790317-e0edff2e8196?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MTV8fGNvbXB1dGVyJTIwcmVwYWlyfGVufDB8fDB8fHww'
   },
   {
     title: 'Step-by-step Repair Guide',
     desc: 'Get comprehensive manuals and reference materials to take home.',
-    image: 'https://images.pexels.com/photos-1481627834876-b7833e8f5570?w=400&h=250&fit=crop'
+    image: 'https://images.unsplash.com/photo-1768633647910-7e6fb53e5b0f?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8N3x8dGVjaCUyMHJlcGFpcnxlbnwwfHwwfHx8MA%3D%3D'
   },
 ];
 
