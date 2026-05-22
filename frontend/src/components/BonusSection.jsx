@@ -2,22 +2,22 @@ const bonuses = [
   {
     title: 'Quick Reference Guide',
     desc: 'Pocket-sized troubleshooting reference for common faults and solutions.',
-    image: 'https://images.pexels.com/photos-1427351714076-e47e0062267d?w=300&h=200&fit=crop'
+    image: 'https://media.istockphoto.com/id/2185114510/photo/process-diagram-with-3d-gear-icon-centered-among-sequential-circular-steps-3d-rendering.jpg?s=612x612&w=0&k=20&c=GmGbGxgEs5tDTT0l_Y-vGi2pIivAUNv--hFp6gX-Axs='
   },
   {
     title: 'Fault Finding Flowcharts',
     desc: 'Step-by-step diagnostic flowcharts for systematic problem-solving.',
-    image: 'https://images.pexels.com/photos-1552664730-d8ca884ca280?w=300&h=200&fit=crop'
+    image: 'https://images.unsplash.com/photo-1604754742629-3e5728249d73?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8Mnx8Y29tcHV0ZXIlMjB0ZWNobmljaWFufGVufDB8fDB8fHww'
   },
   {
     title: 'Tools & Equipment Guide',
     desc: 'Complete list of essential tools and how to use them effectively.',
-    image: 'https://images.pexels.com/photos-1536633482257-38c049eaf81a?w=300&h=200&fit=crop'
+    image: 'https://plus.unsplash.com/premium_photo-1726863026105-b320133454e7?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8OXx8Y29tcHV0ZXIlMjB0b29sc3xlbnwwfHwwfHx8MA%3D%3D'
   },
   {
     title: 'Component Identification Guide',
     desc: 'Visual guide to identify SMD components, ICs, and connectors.',
-    image: 'https://images.pexels.com/photos-3735188-d9a2e39dc16e?w=300&h=200&fit=crop'
+    image: 'https://plus.unsplash.com/premium_photo-1723921242867-42dbc213fbd1?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MXx8Y29tcHV0ZXIlMjB0ZWNobmljaWFufGVufDB8fDB8fHww'
   },
 ];
 
