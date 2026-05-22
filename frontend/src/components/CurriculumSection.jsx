@@ -6,7 +6,7 @@ const curriculumModules = [
       { title: 'Hardware diagnosis & troubleshooting', desc: 'Identify and fix hardware issues systematically' },
       { title: 'Schematic reading & board analysis', desc: 'Read and understand complex circuit diagrams' },
     ],
-    image: 'https://images.pexels.com/photos/3825517/pexels-photo-3825517.jpeg?w=500&h=300&fit=crop'
+    image: 'https://images.unsplash.com/photo-1518770660439-4636190af475?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8Nnx8Y29tcHV0ZXIlMjBoYXJkd2FyZXxlbnwwfHwwfHx8MA%3D%3D'
   },
   {
     category: 'Power & Circuit Repair',
@@ -15,7 +15,7 @@ const curriculumModules = [
       { title: 'Motherboard diagnostics & repair', desc: 'Component-level board repair techniques' },
       { title: 'Peripheral circuits & port repair', desc: 'Fix USB, HDMI, and other connectivity ports' },
     ],
-    image: 'https://images.pexels.com/photos/3721471/pexels-photo-3721471.jpeg?w=500&h=300&fit=crop'
+    image: 'https://media.istockphoto.com/id/1458825136/photo/macro-close-up-of-components-and-microchips-on-pc-circuit-board.webp?a=1&b=1&s=612x612&w=0&k=20&c=NrrPEHDOnsuCsWnyQKrnw5-rc9olmiGYE7wuF6DLDBk='
   },
   {
     category: 'Firmware & Software',
@@ -24,7 +24,7 @@ const curriculumModules = [
       { title: 'Storage, RAM & data recovery', desc: 'Recover data from failed storage devices' },
       { title: 'Advanced testing & quality control', desc: 'Professional testing and verification methods' },
     ],
-    image: 'https://images.pexels.com/photos/3726875/pexels-photo-3726875.jpeg?w=500&h=300&fit=crop'
+    image: 'https://images.unsplash.com/photo-1581092918056-0c4c3acd3789?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MTF8fGRldmljZSUyMHJlcGFpcnxlbnwwfHwwfHx8MA%3D%3D'
   },
   {
     category: 'Advanced Techniques',
@@ -33,7 +33,7 @@ const curriculumModules = [
       { title: 'Display, GPU & video signal repair', desc: 'Fix screen and graphics output issues' },
       { title: 'Thermal management & fan systems', desc: 'Solve overheating and cooling problems' },
     ],
-    image: 'https://images.pexels.com/photos/3802510/pexels-photo-3802510.jpeg?w=500&h=300&fit=crop'
+    image: 'https://plus.unsplash.com/premium_photo-1664301887532-328f07bb2c24?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8OXx8ZGV2aWNlJTIwcmVwYWlyfGVufDB8fDB8fHww'
   },
 ];
 
