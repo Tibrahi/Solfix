@@ -414,7 +414,7 @@ export default function AdminDashboard() {
       {/* Applicant Details Modal */}
       {showModal && selectedApplicant && (
         <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-          <div className="bg-gray-900 border border-gray-700 rounded-xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+          <div className="bg-gray-900 border border-gray-700 rounded-xl p-6 max-w-3xl w-full max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-2xl font-bold text-white">Applicant Details</h2>
               <button
@@ -426,6 +426,20 @@ export default function AdminDashboard() {
                 </svg>
               </button>
             </div>
+
+            {/* Payment Proof Preview */}
+            {selectedApplicant.paymentProof && (
+              <div className="mb-6 p-4 bg-gray-800/50 border border-gray-700 rounded-lg">
+                <p className="text-gray-400 text-sm mb-3">Proof of Payment</p>
+                <div className="flex justify-center">
+                  <img
+                    src={selectedApplicant.paymentProof}
+                    alt="Payment proof"
+                    className="max-h-64 max-w-md rounded-lg border border-gray-600 object-contain"
+                  />
+                </div>
+              </div>
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
