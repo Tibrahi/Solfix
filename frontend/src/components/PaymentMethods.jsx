@@ -23,13 +23,13 @@ const paymentMethods = [
 
 export default function PaymentMethods() {
   return (
-    <section className="bg-black py-16 md:py-24">
+    <section className="bg-white py-16 md:py-24">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-12">
-          <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">
+          <h2 className="text-3xl md:text-4xl font-bold text-black mb-4">
             Easy Payment Options
           </h2>
-          <p className="text-gray-400 max-w-2xl mx-auto">
+          <p className="text-gray-700 max-w-2xl mx-auto">
             We accept multiple payment methods to make your enrollment process smooth and convenient.
           </p>
         </div>
@@ -38,7 +38,7 @@ export default function PaymentMethods() {
           {paymentMethods.map((method, index) => (
             <div
               key={index}
-              className="bg-gray-900/30 border border-gray-800 rounded-xl p-6 flex flex-col items-center justify-center hover:border-gray-600 transition-all group"
+              className="bg-white border border-gray-300 rounded-xl p-6 flex flex-col items-center justify-center hover:border-gray-500 shadow-md hover:shadow-lg transition-all group"
             >
               <div
                 className={`w-24 h-16 ${method.bgColor} rounded-lg flex items-center justify-center mb-4 group-hover:scale-105 transition-transform`}
@@ -50,7 +50,7 @@ export default function PaymentMethods() {
                   loading="lazy"
                 />
               </div>
-              <h3 className="text-white font-medium text-sm text-center">
+              <h3 className="text-black font-medium text-sm text-center">
                 {method.name}
               </h3>
             </div>
@@ -59,9 +59,9 @@ export default function PaymentMethods() {
 
         {/* Additional Info */}
         <div className="mt-8 text-center">
-          <div className="inline-flex items-center space-x-2 bg-gray-900/30 border border-gray-800 rounded-lg px-6 py-3">
-            <span className="text-white text-lg">→</span>
-            <span className="text-gray-400 text-sm">
+          <div className="inline-flex items-center space-x-2 bg-white border border-gray-300 rounded-lg px-6 py-3 shadow-md">
+            <span className="text-black text-lg">→</span>
+            <span className="text-gray-700 text-sm">
               Flexible payment plans available — Contact us for details
             </span>
           </div>

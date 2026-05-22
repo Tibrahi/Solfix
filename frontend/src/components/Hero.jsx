@@ -48,9 +48,9 @@ export default function Hero() {
           {/* Right Side - Image */}
           <div className="relative">
             <img
-              src="https://images.unsplash.com/photo-1591488320449-011701bb6704?w=600&h=400&fit=crop"
-              alt="Laptop motherboard repair training"
-              className="w-full h-auto rounded-xl shadow-2xl grayscale hover:grayscale-0 transition-all duration-500"
+              src="https://images.pexels.com/photos/3587620/pexels-photo-3587620.jpeg?w=600&h=400&fit=crop"
+              alt="Electronics repair technician working on circuit board"
+              className="w-full h-auto rounded-xl shadow-2xl hover:shadow-2xl transition-all duration-500"
               loading="lazy"
             />
           </div>
